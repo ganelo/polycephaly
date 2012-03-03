@@ -5,12 +5,13 @@
 # - subclass Player to have special bid method, custom go method
 # - if 2 people go JackSolo or QueenSolo, who takes precedence?  first - probably?
 from common import *
-from NotSpecial import total_order, is_fail, is_trump
+from NotSpecial import total_order, is_fail, is_trump, trick_order
 
 class DoppelkopfPlayer(Player):
     def __init__(self, *args, **kwargs):
         super(DoppelkopfPlayer, self).__init__(*args, **kwargs)
         self.special = None
+        self.tricks = []
     def declare_special(self):
         sps = [i for i in sorted(specials.keys(), key=specials.__getitem__) if i not in [None, "Poor"]]
         if is_poor(self.hand):
@@ -75,25 +76,26 @@ while len(present) == len(players):
             if player.special:
                 print player.name
                 max_special = max(max_special, specials[player.reveal_special(max_special)])
-        
-        pregame_set_up = post_turn = lambda *_: None
+        specialist = [p for p in turn_players if p.special==max_special][0]
         if max_special == "No-Trump Solo":
-            from NoTrumpSolo import total_order, is_fail, is_trump
+            from NoTrumpSolo import total_order, is_fail, is_trump, player_order
         elif max_special == "Jack Solo":
-            from JackSolo import total_order, is_fail, is_trump
+            from JackSolo import total_order, is_fail, is_trump, player_order
         elif max_special == "Queen Solo":
-            from QueenSolo import total_order, is_fail, is_trump
+            from QueenSolo import total_order, is_fail, is_trump, player_order
         elif max_special == "Marriage":
-            from Marriage import post_turn as post_turn
+            from Marriage import post_turn as post_turn, player_order
         elif max_special == "Poor":
-            from Poor import pregame as pregame_set_up
-        pregame_set_up(turn_players)
+            from Poor import pregame as pregame_set_up, player_order
+        turn_players = player_order(specialist, turn_players)
+        if pregame_set_up(turn_players) == -1:
+            break # re-deal without changing dealers
         while players[0].hand:
             current_trick = []
             for player in turn_players:
                 current_trick += [player.go(current_trick[:])]
-            # calculate hand winner
-            # give the winner this trick
+            winner = turn_players[current_trick.index(max(current_trick, cmp=trick_order))]
+            winner.tricks += current_trick
             post_turn(winner, current_trick)
 
         # update_dealer 

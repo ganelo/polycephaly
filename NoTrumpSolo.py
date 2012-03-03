@@ -28,4 +28,7 @@ def total_order(x, y):
         return 1
     return trump_order(x,y)
 
+def player_order(specialist, players):
+    return players[players.index(specialist):] + players[:players.index(specialist)]
+
 
