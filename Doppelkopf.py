@@ -3,6 +3,7 @@
 # - support version w/ 9s
 # - move mainloop stuff to mainloop.py (and use functions) to make more generic?
 # - subclass Player to have special bid method, custom go method
+# - if 2 people go JackSolo or QueenSolo, who takes precedence?  first - probably?
 from common import *
 from NotSpecial import total_order, is_fail, is_trump
 
@@ -57,7 +58,7 @@ scoreboard = {}
 players = [DkP("Nathan"), DkP("Edward"), DkP("Solomon"), DkP("Wesley")] # get_players
 dealer = players[0]
 scoreboard.update(zip(map(lambda x:x.name,players),[0 for _ in range(4)]))
-present = players[:]
+present = players[:] # allow for people to leave after a hand(? or just after a round?)
 while len(present) == len(players):
     # round
     while dealer in players: #  (dealer is set = None after last person to quit this loop)
@@ -66,7 +67,7 @@ while len(present) == len(players):
         hands = dd.deal()
         max_special = specials[None]
         for player in turn_players:
-            player.hand = sorted(hands[i], cmp=total_order)
+            player.hand = sorted(hands[players.index(player)], cmp=total_order)
             print player.name
             player.show_hand()
             player.declare_special()
@@ -74,7 +75,8 @@ while len(present) == len(players):
             if player.special:
                 print player.name
                 max_special = max(max_special, specials[player.reveal_special(max_special)])
-        pregame_setup = turns_set_up = lambda *_: None
+        
+        pregame_set_up = post_turn = lambda *_: None
         if max_special == "No-Trump Solo":
             from NoTrumpSolo import total_order, is_fail, is_trump
         elif max_special == "Jack Solo":
@@ -82,7 +84,7 @@ while len(present) == len(players):
         elif max_special == "Queen Solo":
             from QueenSolo import total_order, is_fail, is_trump
         elif max_special == "Marriage":
-            from Marriage import pregame as turns_set_up
+            from Marriage import post_turn as post_turn
         elif max_special == "Poor":
             from Poor import pregame as pregame_set_up
         pregame_set_up(turn_players)
@@ -90,7 +92,9 @@ while len(present) == len(players):
             current_trick = []
             for player in turn_players:
                 current_trick += [player.go(current_trick[:])]
-            
+            # calculate hand winner
+            # give the winner this trick
+            post_turn(winner, current_trick)
 
         # update_dealer 
         break
