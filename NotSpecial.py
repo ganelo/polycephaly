@@ -27,11 +27,4 @@ def total_order(x, y):
     if is_trump(x) and is_fail(y):
         return 1
     return trump_order(x,y)
-def trick_order(x, y):
-    if is_fail(x) and is_fail(y):
-        return 1 if y.suit != x.suit else fail_order(x, y)
-    if is_fail(x) and is_trump(y):
-        return -1
-    if is_trump(x) and is_fail(y):
-        return 1
-    return trump_order(x, y)
+

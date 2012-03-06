@@ -6,6 +6,7 @@
 # - add team bids/no-90/no-60/no-30/no-nothing
 # - add Charlie point
 # - add Fox point
+# - add Doppelkopf point
 # - add scoring for non-solo games
 # - finish adding support for marriage and poor
 # - only show each player his/her own info
@@ -21,7 +22,23 @@
 #       - join_game would contain the DoppelkopfPlayer code, so all calls would have to go through SIGRTMIN+n signals . . . (it's your turn, please declare a special, please show your special, etc.)
 #       - in the other direction, when a player made a team bid/etc., join_game would have to send a SIGRTMIN to have Doppelkops scan the pid files for modifications to the pids it cares about?
 from common import *
-from NotSpecial import total_order, is_fail, is_trump, trick_order
+from NotSpecial import *
+
+def trick_winner(trick):
+    winner = trick[0]
+    i = 0
+    while i < (len(trick)-1):
+        i += 1
+        if is_fail(winner) and is_trump(trick[i]):
+            winner = trick[i]
+        elif is_trump(winner) and is_fail(trick[i]):
+            continue
+        elif is_fail(winner) and is_fail(trick[i]) and winner.suit == trick[i].suit:
+            winner = trick[i] if fail_order(winner, trick[i]) < 0 else winner
+        elif is_trump(winner) and is_trump(trick[i]):
+            winner = trick[i] if trump_order(winner, trick[i]) < 0 else winner
+        # if fail fail but contender is not winner's suit, no change
+    return trick.index(winner)
 
 class DoppelkopfPlayer(Player):
     def __init__(self, *args, **kwargs):
@@ -79,7 +96,7 @@ scoreboard = {}
 players = [DkP("Nathan"), DkP("Edward"), DkP("Solomon"), DkP("Wesley")] # (North, East, South, West)
 
 dealer = players[0]
-scoreboard.update(zip(map(lambda x:x.name,players),[0 for _ in range(4)]))
+scoreboard.update(zip(players,[0 for _ in range(4)]))
 present = players[:] # TODO: allow for people to leave after a hand(? or just after a round?)
 while len(present) == len(players):
     # round
@@ -102,15 +119,19 @@ while len(present) == len(players):
         specialist = [p for p in turn_players if p.special==max_special][0]
         pregame_set_up = post_turn = lambda *_: None # by default, take a variable number of args and do nothing
         if max_special == "No-Trump Solo":
-            from NoTrumpSolo import total_order, is_fail, is_trump, player_order
+            from NoTrumpSolo import *
         elif max_special == "Jack Solo":
-            from JackSolo import total_order, is_fail, is_trump, player_order
+            from JackSolo import *
         elif max_special == "Queen Solo":
-            from QueenSolo import total_order, is_fail, is_trump, player_order
+            from QueenSolo import *
         elif max_special == "Marriage":
-            from Marriage import post_turn as post_turn, player_order
+            from Marriage import *
         elif max_special == "Poor":
-            from Poor import pregame as pregame_set_up, player_order
+            from Poor import *
+
+        for player in turn_players:
+            player.hand.sort(cmp=total_order)
+        
         turn_players = player_order(specialist, turn_players) # different specials have different rules for who goes first (Marriage vs. Solos)
         if pregame_set_up(turn_players) == -1: # just for Poor
             break # re-deal without changing dealers
@@ -121,7 +142,7 @@ while len(present) == len(players):
                 print current_trick
                 current_trick += [player.go(current_trick[:])]
             print current_trick
-            winner = turn_players[current_trick.index(sorted(current_trick, cmp=trick_order)[-1])]
+            winner = turn_players[trick_winner(current_trick)]
             winner.tricks += current_trick
             print "{0}'s trick".format(winner.name)
             post_turn(winner, current_trick)
@@ -129,13 +150,13 @@ while len(present) == len(players):
 
         # update scores
         if "Solo" in max_special:
-            re_score = sum(sum(map(points.__getitem__, trick)) for trick in specialist.tricks)
-            kontra_score = sum(sum(sum(map(points.__getitem__, trick)) for trick in player.tricks) for player in players if player != specialist)
-            if re_score > kontra_score:
-                scoreboard[specialist] += 3
-                for player in players:
-                    if player != specialist:
-                        scoreboard[player] -= 1
+            re_score = sum(map(lambda c:points[c.rank], specialist.tricks))
+            kontra_score = sum(sum(map(lambda c:points[c.rank], player.tricks)) for player in players if player != specialist)
+            to_solo = 1 if re_score > kontra_score else -1                
+            scoreboard[specialist] += 3*to_solo
+            for player in players:
+                if player != specialist:
+                    scoreboard[player] -= to_solo
         assert(not sum(scoreboard.values()))
 
         # update_dealer
