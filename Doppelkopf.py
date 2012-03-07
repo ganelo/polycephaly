@@ -5,6 +5,7 @@
 # - if 2 people go JackSolo or QueenSolo, who takes precedence?  first - probably?
 # - does QueenSolo beat JackSolo?
 # - add team bids/no-90/no-60/no-30/no-nothing
+#   - take this into account when displaying message on Fox
 # - finish adding support for marriage and poor
 # - only show each player his/her own info
 #   - maybe have each player run join_game.py or something?
@@ -162,13 +163,16 @@ while len(present) == len(players):
             print "{0}'s trick".format(winner.name)
             if "Solo" not in str(max_special):
                 if fox in current_trick:
+                    print "Fox(?)" # Leave it ambiguous so as not to inadvertantly reveal teams; TODO: if teams are known, don't bother leaving it ambiguous
                     foxers = [p for i, p in enumerate(turn_players) if current_trick[i] == fox]
                     for foxer in foxers:
                         if (winner in re and foxer in kontra) or (winner in kontra and foxer in re):
                             winner.turn_points.append("Fox")
                 if sum(map(lambda c:c.points,current_trick)) >= 40:
+                    print "Doppelkopf!"
                     winner.turn_points.append("Doppelkopf")
                 if not winner.hand and current_trick[turn_players.index(winner)] == charlie:
+                    print "Charlie!"
                     winner.turn_points.append("Charlie")
             post_turn(winner, current_trick)
             turn_players = players[players.index(winner):] + players[:players.index(winner)]
