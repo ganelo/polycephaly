@@ -11,6 +11,8 @@ class Card:
         self.rank = rank
         self.suit = suit
         self.points = points
+    def __cmp__(self, other):
+        return cmp(self.rank, other.rank) or cmp(self.suit, other.suit)
     def __repr__(self):
         return "{0} of {1}".format(self.rank, self.suit)
     def short(self):
@@ -29,6 +31,8 @@ class Deck:
         self.discard = []
     def __iter__(self):
         return iter(self.cards)
+    def __len__(self):
+        return len(self.cards)
     def __repr__(self):
         return "\n".join(str(card) for card in self.cards)
     def order(self):
@@ -52,6 +56,8 @@ class Deck:
         else:
             self.cards = deck
         return hands
+    def cut(self, i):
+        self.cards = self.cards[i:] + self.cards[:i]
 
 class Player(object):
     def __init__(self, name):
@@ -59,6 +65,9 @@ class Player(object):
         self.hand = []
     def show_hand(self):
         print "\t{0}".format(self.hand)
+    def cut(self, deck):
+        print self.name
+        deck.cut(get_option(["" for _ in range(len(deck))]))
 
 def get_option(seq, default=-1):
     seq = (seq[:default]+["{0}".format(seq[default])]+seq[default+1:])[:len(seq)]

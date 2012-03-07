@@ -3,11 +3,15 @@
 # - support version w/ 9s
 # - move mainloop stuff to mainloop.py (and use functions) to make more generic?
 # - if 2 people go JackSolo or QueenSolo, who takes precedence?  first - probably?
+# - does QueenSolo beat JackSolo?
 # - add team bids/no-90/no-60/no-30/no-nothing
+# - add no-90/no-60/no-30/no-nothing points
+# - add team points (against the odds)
 # - add Charlie point
 # - add Fox point
 # - add Doppelkopf point
-# - add scoring for non-solo games
+# - add scoring (or any support, really) for Poor games
+# - add support for silent Solo (undeclared Marriage)
 # - finish adding support for marriage and poor
 # - only show each player his/her own info
 #   - maybe have each player run join_game.py or something?
@@ -22,7 +26,6 @@
 #       - join_game would contain the DoppelkopfPlayer code, so all calls would have to go through SIGRTMIN+n signals . . . (it's your turn, please declare a special, please show your special, etc.)
 #       - in the other direction, when a player made a team bid/etc., join_game would have to send a SIGRTMIN to have Doppelkops scan the pid files for modifications to the pids it cares about?
 from common import *
-from NotSpecial import *
 
 def trick_winner(trick):
     winner = trick[0]
@@ -59,9 +62,6 @@ class DoppelkopfPlayer(Player):
         print self.special
         return bool(self.special)
     def reveal_special(self, other): # TODO: not quite correct currently
-        if specials[other] < specials[self.special]:
-            print self.name
-            print self.special
         return self.special
     def go(self, trick):
         print self.name
@@ -75,6 +75,9 @@ class DoppelkopfPlayer(Player):
                 raise IndexError
         except IndexError:
             valid = self.hand
+        if len(valid) == 1:
+            print "Playing {0} because it is the only valid option.".format(valid[0])
+            return self.hand.pop(self.hand.index(valid[0]))
         print "Which card? "
         return self.hand.pop(self.hand.index(valid[get_option(valid)]))
 
@@ -93,7 +96,7 @@ is_poor = lambda x: map(is_trump, x).count(True) < 3
 scoreboard = {}
 
 # get_players
-players = [DkP("Nathan"), DkP("Edward"), DkP("Solomon"), DkP("Wesley")] # (North, East, South, West)
+players = [DkP("Nathan"), DkP("Easton"), DkP("Seth"), DkP("Wes")] # (North, East, South, West)
 
 dealer = players[0]
 scoreboard.update(zip(players,[0 for _ in range(4)]))
@@ -101,8 +104,12 @@ present = players[:] # TODO: allow for people to leave after a hand(? or just af
 while len(present) == len(players):
     # round
     while dealer in players: #  (dealer is set = None after last person to quit this loop)
+        from NotSpecial import * # every turn uses NotSpecial rules by default
+        
         # turn
         turn_players = players[(players.index(dealer)+1)%4:]+players[:players.index(dealer)+1]
+        dd.shuffle()
+        turn_players[-2].cut(dd)
         hands = dd.deal()
 
         # TODO: animate deal here if desired
@@ -113,10 +120,21 @@ while len(present) == len(players):
             print player.name
             player.show_hand() # TODO: fancy graphics go here if desired (override the base class from common in the DoppelkopfPlayer class)
             player.declare_special()
+
+        re = [p for p in players if "QC" in map(lambda x:x.short(),p.hand)]
+        kontra = [p for p in players if p not in re]
+
+        print
         for player in turn_players:
             if player.special:
                 max_special = max(max_special, player.reveal_special(max_special), key=lambda x:specials[x])
         specialist = [p for p in turn_players if p.special==max_special][0]
+
+        print specialist.name, max_special
+        
+        if "Solo" in str(max_special):
+            re = [specialist]
+            kontra = [p for p in players if p not in re]
         pregame_set_up = post_turn = lambda *_: None # by default, take a variable number of args and do nothing
         if max_special == "No-Trump Solo":
             from NoTrumpSolo import *
@@ -129,8 +147,8 @@ while len(present) == len(players):
         elif max_special == "Poor":
             from Poor import *
 
-        for player in turn_players:
-            player.hand.sort(cmp=total_order)
+        for i in range(len(turn_players)):
+            turn_players[i].hand.sort(cmp=total_order)
         
         turn_players = player_order(specialist, turn_players) # different specials have different rules for who goes first (Marriage vs. Solos)
         if pregame_set_up(turn_players) == -1: # just for Poor
@@ -148,21 +166,44 @@ while len(present) == len(players):
             post_turn(winner, current_trick)
             turn_players = players[players.index(winner):] + players[:players.index(winner)]
 
+        print
+
         # update scores
-        if "Solo" in max_special:
+        if "Solo" in str(max_special):
             re_score = sum(map(lambda c:points[c.rank], specialist.tricks))
             kontra_score = sum(sum(map(lambda c:points[c.rank], player.tricks)) for player in players if player != specialist)
-            to_solo = 1 if re_score > kontra_score else -1                
+            print "Re: {0} points\n{1}".format(re_score, sorted(specialist.tricks, key=lambda c:c.points))
+            print "Kontra: {0} points\n{1}".format(kontra_score, sorted([c for c in dd if c not in specialist.tricks], key=lambda c:c.points))
+            to_solo = 1 if re_score > kontra_score else -1
+            print "{0} wins!".format(specialist.name if to_solo>0 else "Team {0}, {1}, and {2}".format(*map(lambda p:p.name, kontra)))
             scoreboard[specialist] += 3*to_solo
             for player in players:
                 if player != specialist:
                     scoreboard[player] -= to_solo
+        elif max_special == "Marriage":
+            pass # TODO: add scoring for Marriage hands
+        elif max_special == "Poor":
+            pass # TODO: add scoring for Poor hands
+        else:
+            re_score = sum(sum(map(lambda c:points[c.rank], player.tricks)) for player in re)
+            kontra_score = sum(sum(map(lambda c:points[c.rank], player.tricks)) for player in kontra)
+            print "Re: {0} points\n{1}".format(re_score, sorted([c for c in dd if c in re[0].tricks or c in re[1].tricks], key=lambda c:c.points))
+            print "Kontra: {0} points\n{1}".format(kontra_score, sorted([c for c in dd if c in kontra[0].tricks or c in kontra[1].tricks], key=lambda c:c.points))
+            to_re = 1 if re_score > kontra_score else -1
+            print "{0} wins!".format("Re" if to_re > 0 else "Kontra")
+            for player in re:
+                scoreboard[player] += to_re
+            for player in kontra:
+                scoreboard[player] -= to_re
+
         assert(not sum(scoreboard.values()))
+        print "\nScores:"
+        print "\n".join("\t{0}: {1}".format(p.name,s) for p, s in scoreboard.items())
+        print
 
         # update_dealer
-        if players == player_order(specialist, players) == player_order(specialist, players[1:]+players[0]): # TODO: if leader goes Solo, does dealer change?
+        if (players == player_order(specialist, players)) and (players[1:] + [players[0]] == player_order(specialist, players[1:]+[players[0]])): # TODO: if leader goes Solo, does dealer change?
             dealer = (players+[None])[players.index(dealer)+1]
- 
         
     # get_current_players
     assert(sum(scoreboard.values())==0)
