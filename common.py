@@ -66,6 +66,7 @@ class Player(object):
     def show_hand(self):
         print "\t{0}".format(self.hand)
     def cut(self, deck):
+        print "Please select a cut."
         print self.name
         deck.cut(get_option(["" for _ in range(len(deck))]))
 

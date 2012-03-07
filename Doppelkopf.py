@@ -5,13 +5,6 @@
 # - if 2 people go JackSolo or QueenSolo, who takes precedence?  first - probably?
 # - does QueenSolo beat JackSolo?
 # - add team bids/no-90/no-60/no-30/no-nothing
-# - add no-90/no-60/no-30/no-nothing points
-# - add team points (against the odds)
-# - add Charlie point
-# - add Fox point
-# - add Doppelkopf point
-# - add scoring (or any support, really) for Poor games
-# - add support for silent Solo (undeclared Marriage)
 # - finish adding support for marriage and poor
 # - only show each player his/her own info
 #   - maybe have each player run join_game.py or something?
@@ -48,6 +41,7 @@ class DoppelkopfPlayer(Player):
         super(DoppelkopfPlayer, self).__init__(*args, **kwargs)
         self.special = None
         self.tricks = []
+        self.turn_points = []
     def declare_special(self):
         sps = [i for i in sorted(specials.keys(), key=specials.__getitem__) if i not in [None, "Poor"]]
         if is_poor(self.hand):
@@ -82,6 +76,9 @@ class DoppelkopfPlayer(Player):
         return self.hand.pop(self.hand.index(valid[get_option(valid)]))
 
 DkP = DoppelkopfPlayer
+
+fox = Card(rank="Ace", suit="Diamonds")
+charlie = Card(rank="Jack", suit="Clubs")
 
 specials = {None:0, "No-Trump Solo":1, "Jack Solo":1, "Queen Solo":1, "Marriage":2, "Poor":3}
 points = {"Ace":11, "King":4, "Queen":3, "Jack":2, "10":10}
@@ -163,38 +160,71 @@ while len(present) == len(players):
             winner = turn_players[trick_winner(current_trick)]
             winner.tricks += current_trick
             print "{0}'s trick".format(winner.name)
+            if "Solo" not in str(max_special):
+                if fox in current_trick:
+                    foxers = [p for i, p in enumerate(turn_players) if current_trick[i] == fox]
+                    for foxer in foxers:
+                        if (winner in re and foxer in kontra) or (winner in kontra and foxer in re):
+                            winner.turn_points.append("Fox")
+                if sum(map(lambda c:c.points,current_trick)) >= 40:
+                    winner.turn_points.append("Doppelkopf")
+                if not winner.hand and current_trick[turn_players.index(winner)] == charlie:
+                    winner.turn_points.append("Charlie")
             post_turn(winner, current_trick)
             turn_players = players[players.index(winner):] + players[:players.index(winner)]
 
         print
 
-        # update scores
-        if "Solo" in str(max_special):
-            re_score = sum(map(lambda c:points[c.rank], specialist.tricks))
-            kontra_score = sum(sum(map(lambda c:points[c.rank], player.tricks)) for player in players if player != specialist)
-            print "Re: {0} points\n{1}".format(re_score, sorted(specialist.tricks, key=lambda c:c.points))
-            print "Kontra: {0} points\n{1}".format(kontra_score, sorted([c for c in dd if c not in specialist.tricks], key=lambda c:c.points))
-            to_solo = 1 if re_score > kontra_score else -1
-            print "{0} wins!".format(specialist.name if to_solo>0 else "Team {0}, {1}, and {2}".format(*map(lambda p:p.name, kontra)))
-            scoreboard[specialist] += 3*to_solo
-            for player in players:
-                if player != specialist:
-                    scoreboard[player] -= to_solo
-        elif max_special == "Marriage":
-            pass # TODO: add scoring for Marriage hands
-        elif max_special == "Poor":
-            pass # TODO: add scoring for Poor hands
+        # inner points
+        re_score = sum(sum(map(lambda c:points[c.rank], player.tricks)) for player in re)
+        kontra_score = sum(sum(map(lambda c:points[c.rank], player.tricks)) for player in kontra)
+        print "Re: {0} points\n{1}".format(re_score, sorted([c for c in dd if c in re[0].tricks or c in re[1].tricks], key=lambda c:c.points))
+        print "Kontra: {0} points\n{1}".format(kontra_score, sorted([c for c in dd if c in kontra[0].tricks or c in kontra[1].tricks], key=lambda c:c.points))
+        print "{0} wins!".format("Re" if re_score > kontra_score else "Kontra")
+
+        # outer points
+        re_points = []
+        for p in re:
+            re_points.extend(p.turn_points)
+        kontra_points = []
+        for p in kontra:
+            kontra_points.extend(p.turn_points)
+        win,fail = max(re_score, kontra_score+1), min(re_score,kontra_score+1)
+        game_points = 1
+        print "{0}: win".format(game_points)
+        if fail < 90:   # no-90
+            game_points += 1
+            print "{0}: no 90".format(game_points)
+        if fail < 60:   # no-60
+            game_points += 1
+            print "{0}: no 60".format(game_points)
+        if fail < 30:   # no-30
+            game_points += 1
+            print "{0}: no 30".format(game_points)
+        if fail == 0:   # no-nothing
+            game_points += 1
+            print "{0}: no nothing".format(game_points)
+        if win != re_score:
+            game_points += 1 # geigen die alten/against the elders/against the odds
+            print "{0}: geigen die alten".format(game_points)
+            for point in kontra_points:
+                game_points += 1
+                print "{0}: {1}".format(game_points, point)
+            for point in re_points:
+                game_points -= 1
+                print "{0}: minus {1}".format(game_points, point)
+            game_points *= -1
         else:
-            re_score = sum(sum(map(lambda c:points[c.rank], player.tricks)) for player in re)
-            kontra_score = sum(sum(map(lambda c:points[c.rank], player.tricks)) for player in kontra)
-            print "Re: {0} points\n{1}".format(re_score, sorted([c for c in dd if c in re[0].tricks or c in re[1].tricks], key=lambda c:c.points))
-            print "Kontra: {0} points\n{1}".format(kontra_score, sorted([c for c in dd if c in kontra[0].tricks or c in kontra[1].tricks], key=lambda c:c.points))
-            to_re = 1 if re_score > kontra_score else -1
-            print "{0} wins!".format("Re" if to_re > 0 else "Kontra")
-            for player in re:
-                scoreboard[player] += to_re
-            for player in kontra:
-                scoreboard[player] -= to_re
+            for point in re_points:
+                game_points += 1
+                print "{0}: {1}".format(game_points, point)
+            for point in kontra_points:
+                game_points -= 1
+                print "{0}: minus {1}".format(game_points, point)
+        for player in re:
+            scoreboard[player] += game_points
+        for player in kontra:
+            scoreboard[player] -= game_points
 
         assert(not sum(scoreboard.values()))
         print "\nScores:"
