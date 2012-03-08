@@ -4,9 +4,6 @@
 # - move mainloop stuff to mainloop.py (and use functions) to make more generic?
 # - if 2 people go JackSolo or QueenSolo, who takes precedence?  first - probably?
 # - add scoring for team bids/no-90/no-60/no-30/no-nothing
-# - take team bids into account when displaying message on Fox
-#   - complicated because need to keep track of which partner on the team made which bid
-#     - maybe have each partner keep track of his own bids and then use the max of him and his partner as input to the bid method?
 # - finish adding support for marriage and poor
 # - only show each player his/her own info
 #   - maybe have each player run join_game.py or something?
