@@ -71,7 +71,7 @@ class Player(object):
         deck.cut(get_option(["" for _ in range(len(deck))]))
 
 def get_option(seq, default=-1):
-    seq = (seq[:default]+["{0}".format(seq[default])]+seq[default+1:])[:len(seq)]
+    seq = (seq[:default]+["[{0}]".format(seq[default])]+seq[default+1:])[:len(seq)]
     print "\n".join(map(lambda x:" ".join(x),zip(map(str,range(1,len(seq)+1)),map(str,seq))))
     ind = ""
     while not isinstance(ind, int):

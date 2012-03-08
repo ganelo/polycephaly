@@ -3,9 +3,10 @@
 # - support version w/ 9s
 # - move mainloop stuff to mainloop.py (and use functions) to make more generic?
 # - if 2 people go JackSolo or QueenSolo, who takes precedence?  first - probably?
-# - does QueenSolo beat JackSolo?
-# - add team bids/no-90/no-60/no-30/no-nothing
-#   - take this into account when displaying message on Fox
+# - add scoring for team bids/no-90/no-60/no-30/no-nothing
+# - take team bids into account when displaying message on Fox
+#   - complicated because need to keep track of which partner on the team made which bid
+#     - maybe have each partner keep track of his own bids and then use the max of him and his partner as input to the bid method?
 # - finish adding support for marriage and poor
 # - only show each player his/her own info
 #   - maybe have each player run join_game.py or something?
@@ -43,7 +44,12 @@ class DoppelkopfPlayer(Player):
         self.special = None
         self.tricks = []
         self.turn_points = []
-    def declare_special(self):
+        self.bids = 0
+    def declare_special(self): # called only once, and before gameplay starts, so ideal for establishing team-hood
+        if "QC" in map(lambda c:c.short(), self.hand): # this simplification is okay b/c we only allow team bidding when playing a normal (nonspecial) hand
+            self.team = "Re"
+        else:
+            self.team = "Kontra"
         sps = [i for i in sorted(specials.keys(), key=specials.__getitem__) if i not in [None, "Poor"]]
         if is_poor(self.hand):
             self.special = "Poor"
@@ -51,7 +57,7 @@ class DoppelkopfPlayer(Player):
             return True
         elif not is_marriage(self.hand):
             sps = [i for i in sps if i != "Marriage"]
-        print "Which special? [None]"
+        print "Which special?"
         special_type = get_option(sps+["None"])
         self.special = (sps+[None])[special_type]
         print self.special
@@ -73,15 +79,22 @@ class DoppelkopfPlayer(Player):
         if len(valid) == 1:
             print "Playing {0} because it is the only valid option.".format(valid[0])
             return self.hand.pop(self.hand.index(valid[0]))
-        print "Which card? "
-        return self.hand.pop(self.hand.index(valid[get_option(valid)]))
+        print "Which card?"
+        return self.hand.pop(self.hand.index(valid[get_option(valid, default=0)]))
+    def bid(self, so_far):
+        bids = [self.team, "No 90", "No 60", "No 30", "No nothing"][so_far:]
+        length = len(self.hand) + (3 if max_special == "Marriage" else 0)
+        if (so_far + length) < 9 or not bids:
+            return
+        print "Would you like to make a bid?"
+        self.bids += get_option(["No"]+bids,default=0)
 
 DkP = DoppelkopfPlayer
 
 fox = Card(rank="Ace", suit="Diamonds")
 charlie = Card(rank="Jack", suit="Clubs")
 
-specials = {None:0, "No-Trump Solo":1, "Jack Solo":1, "Queen Solo":1, "Marriage":2, "Poor":3}
+specials = {None:0, "No-Trump Solo":4, "Jack Solo":2, "Queen Solo":3, "Marriage":1, "Poor":5}
 points = {"Ace":11, "King":4, "Queen":3, "Jack":2, "10":10}
 DoppelkopfDeck = Deck(suits=suits*2, ranks=ranks,
                       drop=lambda x:x.rank in map(str,range(2,10))+["Joker"],
@@ -116,11 +129,12 @@ while len(present) == len(players):
         for player in turn_players:
             player.hand = sorted(hands[players.index(player)], cmp=total_order)
             print player.name
-            player.show_hand() # TODO: fancy graphics go here if desired (override the base class from common in the DoppelkopfPlayer class)
+            player.show_hand() # TODO: fancy graphics go here if desired (in the DoppelkopfPlayer class, override Player.show_hand from common)
             player.declare_special()
 
         re = [p for p in players if "QC" in map(lambda x:x.short(),p.hand)]
         kontra = [p for p in players if p not in re]
+        teams_known = False
 
         print
         for player in turn_players:
@@ -147,6 +161,9 @@ while len(present) == len(players):
 
         for i in range(len(turn_players)):
             turn_players[i].hand.sort(cmp=total_order)
+
+        if "Solo" in str(max_special):
+            teams_known = True
         
         turn_players = player_order(specialist, turn_players) # different specials have different rules for who goes first (Marriage vs. Solos)
         if pregame_set_up(turn_players) == -1: # just for Poor
@@ -154,19 +171,30 @@ while len(present) == len(players):
         while players[0].hand:
             current_trick = []
             for player in turn_players:
+                team = re if player in re else kontra
+                team_bids = [p.bids for p in players if p in team]
+                print player.name
+                print player.hand
+                player.bid(max(team_bids))
+                team_bids = [p.bids for p in players if p in team] # have to update team_bids so teams_known will be correct
                 print                   # TODO: fancy graphics go here - everyone can see the current trick
                 print current_trick
                 current_trick += [player.go(current_trick[:])]
+                if len(filter(lambda x:not x,team_bids)) == 0: # all non-zero bids so teams are known; can't just check for more than 1 b/c of silent solo
+                    teams_known = True
             print current_trick
             winner = turn_players[trick_winner(current_trick)]
             winner.tricks += current_trick
             print "{0}'s trick".format(winner.name)
             if "Solo" not in str(max_special):
-                if fox in current_trick:
-                    print "Fox(?)" # Leave it ambiguous so as not to inadvertantly reveal teams; TODO: if teams are known, don't bother leaving it ambiguous
+                if fox in current_trick and winner != turn_players[current_trick.index(fox)]:
+                    if not teams_known:
+                        print "Fox(?)"
                     foxers = [p for i, p in enumerate(turn_players) if current_trick[i] == fox]
                     for foxer in foxers:
                         if (winner in re and foxer in kontra) or (winner in kontra and foxer in re):
+                            if teams_known:
+                                print "Fox!"
                             winner.turn_points.append("Fox")
                 if sum(map(lambda c:c.points,current_trick)) >= 40:
                     print "Doppelkopf!"
