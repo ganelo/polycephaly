@@ -78,7 +78,7 @@ def get_option(seq, default=-1):
         try:
             ind = raw_input("> ")
             if not ind:
-                return default
+                return (len(seq)+default)%len(seq)
             ind = int(ind)
             if ind < 0:
                 raise ValueError
@@ -86,3 +86,14 @@ def get_option(seq, default=-1):
             print "Enter a positive number."
     return ind-1
 
+def get_multi_option(seq, n):
+    chosen = []
+    fmt = "{0:<30}\t[{1}]"
+    while len(chosen) < n:
+        mod_seq = []
+        for i, s in enumerate(seq):
+            mod_seq += [fmt.format(s, "x" if i in chosen else " ")]
+        new = get_option(mod_seq)
+        if new in chosen: chosen.remove(new)
+        else: chosen.append(new)
+    return chosen

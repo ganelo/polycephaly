@@ -3,6 +3,7 @@
 # - support version w/ 9s
 # - move mainloop stuff to mainloop.py (and use functions) to make more generic?
 # - if 2 people go JackSolo or QueenSolo, who takes precedence?  first - probably?
+# - who leads on a poor?  the player that takes the poor?
 # - add scoring for team bids/no-90/no-60/no-30/no-nothing
 # - finish adding support for marriage and poor
 # - only show each player his/her own info
@@ -32,7 +33,7 @@ def trick_winner(trick):
             winner = trick[i] if fail_order(winner, trick[i]) < 0 else winner
         elif is_trump(winner) and is_trump(trick[i]):
             winner = trick[i] if trump_order(winner, trick[i]) < 0 else winner
-        # if fail fail but contender is not winner's suit, no change
+        # if fail-fail but contender is not winner's suit, no change
     return trick.index(winner)
 
 class DoppelkopfPlayer(Player):
@@ -42,21 +43,13 @@ class DoppelkopfPlayer(Player):
         self.tricks = []
         self.turn_points = []
         self.bids = 0
+        self.team = ""
     def declare_special(self): # called only once, and before gameplay starts, so ideal for establishing team-hood
-        if "QC" in map(lambda c:c.short(), self.hand): # this simplification is okay b/c we only allow team bidding when playing a normal (nonspecial) hand
-            self.team = "Re"
-        else:
-            self.team = "Kontra"
-        sps = [i for i in sorted(specials.keys(), key=specials.__getitem__) if i not in [None, "Poor"]]
-        if is_poor(self.hand):
-            self.special = "Poor"
-            print "Poor hand - no choice."
-            return True
-        elif not is_marriage(self.hand):
-            sps = [i for i in sps if i != "Marriage"]
+        sps = [i for i in sorted(specials.keys(),key=specials.__getitem__, reverse=True)
+                   if (i != "Poor" or is_poor(self.hand)) and (i != "Marriage" or is_marriage(self.hand)) and i]+[None]
         print "Which special?"
-        special_type = get_option(sps+["None"])
-        self.special = (sps+[None])[special_type]
+        special_type = get_option(map(str,sps),default=sps.index("Poor") if "Poor" in sps else -1)
+        self.special = sps[special_type]
         print self.special
         return bool(self.special)
     def reveal_special(self, other): # TODO: not quite correct currently
@@ -81,10 +74,23 @@ class DoppelkopfPlayer(Player):
     def bid(self, so_far):
         bids = [self.team, "No 90", "No 60", "No 30", "No nothing"][so_far:]
         length = len(self.hand) + (3 if max_special == "Marriage" else 0)
-        if (so_far + length) < 9 or not bids:
+        if (so_far + length) < 9 or not bids or not self.team:
             return
         print "Would you like to make a bid?"
         self.bids += get_option(["No"]+bids,default=0)
+    def take_poor(self):
+        print "Take poor?"
+        return not get_option(["Yes","No"])
+    def trade(self, poor=False):
+        to_trade = filter(is_trump, self.hand) if poor else []
+        if len(to_trade) < 3:
+            print "Choose {0} cards to trade{1}:".format(3-len(to_trade), " (trump cards will automatically be traded)" if poor else "")
+            options = filter(lambda c:c not in to_trade, self.hand)
+            to_trade += map(options.__getitem__, get_multi_option(options, 3-len(to_trade)))
+        [self.hand.remove(c) for c in to_trade]
+        if not poor:
+            print "Giving {0} trump".format(len(filter(is_trump,to_trade)))
+        return to_trade
 
 DkP = DoppelkopfPlayer
 
@@ -158,13 +164,27 @@ while len(present) == len(players):
 
         for i in range(len(turn_players)):
             turn_players[i].hand.sort(cmp=total_order)
-
-        if "Solo" in str(max_special):
-            teams_known = True
         
         turn_players = player_order(specialist, turn_players) # different specials have different rules for who goes first (Marriage vs. Solos)
-        if pregame_set_up(turn_players) == -1: # just for Poor
+        poor_taker = pregame_set_up(specialist, turn_players)
+        if poor_taker == -1: # just for Poor
+            print "No takers on poor hand - redealing."
             break # re-deal without changing dealers
+        elif poor_taker: # no Fox/Doppelkopf/Charlie in Solo games, so no need to update teams_known in that case
+            teams_known = True
+            re = [specialist, turn_players[poor_taker-1]]
+            kontra = [p for p in players if p not in re]
+            turn_players[poor_taker-1].hand += specialist.trade(True)
+            turn_players[poor_taker-1].hand.sort(cmp=total_order)
+            specialist.hand += turn_players[poor_taker-1].trade()
+            specialist.hand.sort(cmp=total_order)
+
+        if max_special != "Marriage":
+            for player in re:
+                player.team = "Re"
+            for player in kontra:
+                player.team = "Kontra"
+        
         while players[0].hand:
             current_trick = []
             for player in turn_players:
@@ -265,7 +285,5 @@ while len(present) == len(players):
             dealer = (players+[None])[players.index(dealer)+1]
         
     # get_current_players
-    assert(sum(scoreboard.values())==0)
-    break
 dd.cmp = total_order
 dd.order()
