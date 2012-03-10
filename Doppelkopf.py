@@ -5,7 +5,7 @@
 # - if 2 people go JackSolo or QueenSolo, who takes precedence?  first - probably?
 # - who leads on a poor?  the player that takes the poor?
 # - add scoring for team bids/no-90/no-60/no-30/no-nothing
-# - finish adding support for marriage and poor
+# - finish adding support for marriage
 # - only show each player his/her own info
 #   - maybe have each player run join_game.py or something?
 #       - join_game would write the username, etc. to a standard file (name=pid), look for a running Doppelkopf.py and send a SIGRTMIN (using os.kill) to register itself, then spin until it receives SIGRTMIN
@@ -76,6 +76,8 @@ class DoppelkopfPlayer(Player):
         length = len(self.hand) + (3 if max_special == "Marriage" else 0)
         if (so_far + length) < 9 or not bids or not self.team:
             return
+        print player.name
+        print player.hand
         print "Would you like to make a bid?"
         self.bids += get_option(["No"]+bids,default=0)
     def take_poor(self):
@@ -106,7 +108,7 @@ dd = DoppelkopfDeck
 dd.players = 4
 dd.deals = [3, 4, 3]
 is_marriage = lambda x: x.count(Card(rank="Queen",suit="Clubs")) == 2
-is_poor = lambda x: map(is_trump, x).count(True) < 3
+is_poor = lambda x: map(is_trump, x).count(True) <= 3
 scoreboard = {}
 
 # get_players
@@ -190,8 +192,6 @@ while len(present) == len(players):
             for player in turn_players:
                 team = re if player in re else kontra
                 team_bids = [p.bids for p in players if p in team]
-                print player.name
-                print player.hand
                 player.bid(max(team_bids))
                 team_bids = [p.bids for p in players if p in team] # have to update team_bids so teams_known will be correct
                 print                   # TODO: fancy graphics go here - everyone can see the current trick
@@ -227,7 +227,7 @@ while len(present) == len(players):
         # inner points
         re_score = sum(sum(map(lambda c:points[c.rank], player.tricks)) for player in re)
         kontra_score = sum(sum(map(lambda c:points[c.rank], player.tricks)) for player in kontra)
-        print "Re: {0} points\n{1}".format(re_score, sorted([c for c in dd if c in re[0].tricks or c in re[1].tricks], key=lambda c:c.points))
+        print "Re: {0} points\n{1}".format(re_score, sorted([c for c in dd if any(map(lambda p: c in p.tricks, re))], key=lambda c:c.points))
         print "Kontra: {0} points\n{1}".format(kontra_score, sorted([c for c in dd if c in kontra[0].tricks or c in kontra[1].tricks], key=lambda c:c.points))
         print "{0} wins!".format("Re" if re_score > kontra_score else "Kontra")
 
@@ -271,7 +271,7 @@ while len(present) == len(players):
                 game_points -= 1
                 print "{0}: minus {1}".format(game_points, point)
         for player in re:
-            scoreboard[player] += game_points
+            scoreboard[player] += game_points*(len(kontra)-len(re)+1)
         for player in kontra:
             scoreboard[player] -= game_points
 
