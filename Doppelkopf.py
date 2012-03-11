@@ -4,8 +4,6 @@
 # - move mainloop stuff to mainloop.py (and use functions) to make more generic?
 # - if 2 people go JackSolo or QueenSolo, who takes precedence?  first - probably?
 # - who leads on a poor?  the player that takes the poor?
-# - add scoring for team bids/no-90/no-60/no-30/no-nothing
-# - finish adding support for marriage
 # - only show each player his/her own info
 #   - maybe have each player run join_game.py or something?
 #       - join_game would write the username, etc. to a standard file (name=pid), look for a running Doppelkopf.py and send a SIGRTMIN (using os.kill) to register itself, then spin until it receives SIGRTMIN
@@ -190,15 +188,17 @@ while len(present) == len(players):
         while players[0].hand:
             current_trick = []
             for player in turn_players:
-                team = re if player in re else kontra
-                team_bids = [p.bids for p in players if p in team]
-                player.bid(max(team_bids))
-                team_bids = [p.bids for p in players if p in team] # have to update team_bids so teams_known will be correct
+                if player.team:
+                    team = re if player in re else kontra
+                    team_bids = [p.bids for p in players if p in team]
+                    player.bid(sum(team_bids))
+                    team_bids = [p.bids for p in players if p in team] # have to update team_bids so teams_known will be correct
                 print                   # TODO: fancy graphics go here - everyone can see the current trick
                 print current_trick
                 current_trick += [player.go(current_trick[:])]
-                if len(filter(lambda x:not x,team_bids)) == 0: # all non-zero bids so teams are known; can't just check for more than 1 b/c of silent solo
-                    teams_known = True
+                if player.team:
+                    if len(filter(lambda x:not x,team_bids)) == 0: # all non-zero bids so teams are known; can't just check for more than 1 b/c of silent solo
+                        teams_known = True
             print current_trick
             winner = turn_players[trick_winner(current_trick)]
             winner.tricks += current_trick
@@ -212,14 +212,21 @@ while len(present) == len(players):
                         if (winner in re and foxer in kontra) or (winner in kontra and foxer in re):
                             if teams_known:
                                 print "Fox!"
-                            winner.turn_points.append("Fox")
+                            winner.turn_points.append(("Fox",1))
                 if sum(map(lambda c:c.points,current_trick)) >= 40:
                     print "Doppelkopf!"
-                    winner.turn_points.append("Doppelkopf")
+                    winner.turn_points.append(("Doppelkopf",1))
                 if not winner.hand and current_trick[turn_players.index(winner)] == charlie:
                     print "Charlie!"
-                    winner.turn_points.append("Charlie")
-            post_turn(winner, current_trick)
+                    winner.turn_points.append(("Charlie",1))
+            re = post_turn(specialist, winner, current_trick) if not winner.team else re
+            if re:
+                teams_known = True
+                kontra = [p for p in players if p not in re]
+                for p in re:
+                    p.team = "Re"
+                for p in kontra:
+                    p.team = "Kontra"
             turn_players = players[players.index(winner):] + players[:players.index(winner)]
 
         print
@@ -230,6 +237,17 @@ while len(present) == len(players):
         print "Re: {0} points\n{1}".format(re_score, sorted([c for c in dd if any(map(lambda p: c in p.tricks, re))], key=lambda c:c.points))
         print "Kontra: {0} points\n{1}".format(kontra_score, sorted([c for c in dd if c in kontra[0].tricks or c in kontra[1].tricks], key=lambda c:c.points))
         print "{0} wins!".format("Re" if re_score > kontra_score else "Kontra")
+        re_bids = max(p.bids for p in re)
+        kontra_bids = max(p.bids for p in kontra)
+        bids = [0, 121, 151, 181, 211, 240]
+        if re_score < bids[re_bids]:
+            re[0].turn_points.append(("missed calls ({} < {})".format(re_score, bids[re_bids]), -2*re_bids))
+        else:
+            re[0].turn_points.extend([("called {}".format(["win", "no 90", "no 60", "no 30", "no nothing"][b]),1) for b in range(re_bids)])
+        if kontra_score < bids[kontra_bids] and kontra_score < 120:
+            kontra[0].turn_points.append(("missed calls ({} < {})".format(kontra_score, bids[kontra_bids]), -2*kontra_bids))
+        else:
+            kontra[0].turn_points.extend([("called {}".format(["win", "no 90", "no 60", "no 30", "no nothing"][b]),1) for b in range(kontra_bids)])
 
         # outer points
         re_points = []
@@ -257,19 +275,19 @@ while len(present) == len(players):
             game_points += 1 # geigen die alten/against the elders/against the odds
             print "{0}: geigen die alten".format(game_points)
             for point in kontra_points:
-                game_points += 1
-                print "{0}: {1}".format(game_points, point)
+                game_points += point[1]
+                print "{0}: {1}".format(game_points, point[0])
             for point in re_points:
-                game_points -= 1
-                print "{0}: minus {1}".format(game_points, point)
+                game_points -= point[1]
+                print "{0}: minus {1}".format(game_points, point[0])
             game_points *= -1
         else:
             for point in re_points:
-                game_points += 1
-                print "{0}: {1}".format(game_points, point)
+                game_points += point[1]
+                print "{0}: {1}".format(game_points, point[0])
             for point in kontra_points:
-                game_points -= 1
-                print "{0}: minus {1}".format(game_points, point)
+                game_points -= point[1]
+                print "{0}: minus {1}".format(game_points, point[0])
         for player in re:
             scoreboard[player] += game_points*(len(kontra)-len(re)+1)
         for player in kontra:
